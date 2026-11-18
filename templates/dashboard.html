@@ -59,7 +59,7 @@
     <div class="col-lg-8">
         {% if resultado %}
         <div class="alert alert-warning fw-bold">
-            🔄 {{ resultado.estado }} | Origen: {{ resultado.ciudad_a.split('|').strip() }} ➔ Destino: {{ resultado.ciudad_b.split('|').strip() }}
+            🔄 {{ resultado.estado }} | Origen: {{ resultado.ciudad_a }} ➔ Destino: {{ resultado.ciudad_b }}
         </div>
         <div class="row g-3 mb-3">
             <div class="col-md-4"><div class="card card-glass p-2 text-center"><small>Pendiente Mann-Kendall</small><h5>{{ resultado.pendiente_a }}</h5></div></div>
@@ -104,8 +104,8 @@
                 <tr>
                     <td>{{ r.id }}</td>
                     <td>{{ r.username }}</td>
-                    <td>{{ r.zona_origen.split('|').strip() }}</td>
-                    <td class="text-info">{{ r.zona_destino.split('|').strip() }}</td>
+                    <td>{{ r.zona_origen }}</td>
+                    <td class="text-info">{{ r.zona_destino }}</td>
                     <td><span class="badge bg-warning text-dark">{{ r.estado_alerta }}</span></td>
                     <td>{{ r.fecha_crisis }}</td>
                     <td>{{ r.notas_accion }}</td>

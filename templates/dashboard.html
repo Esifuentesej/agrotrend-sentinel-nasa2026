@@ -59,7 +59,7 @@
     <div class="col-lg-8">
         {% if resultado %}
         <div class="alert alert-warning fw-bold">
-            🔄 {{ resultado.estado }} | Origen: {{ resultado.ciudad_a.split('|')[0] }} ➔ Destino: {{ resultado.ciudad_b.split('|')[0] }}
+            🔄 {{ resultado.estado }} | Origen: {{ resultado.ciudad_a.split('|').strip() }} ➔ Destino: {{ resultado.ciudad_b.split('|').strip() }}
         </div>
         <div class="row g-3 mb-3">
             <div class="col-md-4"><div class="card card-glass p-2 text-center"><small>Pendiente Mann-Kendall</small><h5>{{ resultado.pendiente_a }}</h5></div></div>
@@ -68,11 +68,11 @@
         </div>
         <div class="card card-glass p-3 mb-3">
             <h6>🌐 Mapa de Riesgo y Refugio Hídrico ({{ resultado.fuente }})</h6>
-            <div id="map" style="height: 260px; border-radius: 8px;"></div>
+            <div id="map" style="height: 280px; width: 100%; border-radius: 8px; z-index: 1;"></div>
         </div>
         <div class="card card-glass p-3">
             <h6>📈 Comparativa Satelital (Últimos 36 meses)</h6>
-            <canvas id="trendChart" height="110"></canvas>
+            <div style="height: 220px;"><canvas id="trendChart"></canvas></div>
         </div>
         {% else %}
         <div class="card card-glass p-5 text-center">
@@ -104,8 +104,8 @@
                 <tr>
                     <td>{{ r.id }}</td>
                     <td>{{ r.username }}</td>
-                    <td>{{ r.zona_origen.split('|')[0] }}</td>
-                    <td class="text-info">{{ r.zona_destino.split('|')[0] }}</td>
+                    <td>{{ r.zona_origen.split('|').strip() }}</td>
+                    <td class="text-info">{{ r.zona_destino.split('|').strip() }}</td>
                     <td><span class="badge bg-warning text-dark">{{ r.estado_alerta }}</span></td>
                     <td>{{ r.fecha_crisis }}</td>
                     <td>{{ r.notas_accion }}</td>
@@ -130,24 +130,39 @@
 <script src="https://unpkg.com"></script>
 <script src="https://jsdelivr.net"></script>
 <script>
-    const latA = {{ resultado.coords.lat_a }}, lonA = {{ resultado.coords.lon_a }};
-    const latB = {{ resultado.coords.lat_b }}, lonB = {{ resultado.coords.lon_b }};
-    const map = L.map('map').setView([(latA + latB)/2, (lonA + lonB)/2], 4);
-    L.tileLayer('https://{s}://{z}/{x}/{y}{r}.png').addTo(map);
-    L.circleMarker([latA, lonA], {color: '#ff2d55', radius: 10}).addTo(map).bindPopup("ORIGEN (Riesgo)");
-    L.circleMarker([latB, lonB], {color: '#38bdf8', radius: 10}).addTo(map).bindPopup("DESTINO (Refugio)");
-    L.polyline([[latA, lonA], [latB, lonB]], {color: '#38bdf8', weight: 3, dashArray: '6,6'}).addTo(map);
+    document.addEventListener("DOMContentLoaded", function() {
+        const latA = Number("{{ resultado.coords.lat_a }}");
+        const lonA = Number("{{ resultado.coords.lon_a }}");
+        const latB = Number("{{ resultado.coords.lat_b }}");
+        const lonB = Number("{{ resultado.coords.lon_b }}");
 
-    new Chart(document.getElementById('trendChart'), {
-        type: 'line',
-        data: {
-            labels: {{ resultado.fechas_hist | tojson }},
-            datasets: [
-                { label: 'Zona Origen', data: {{ resultado.valores_a | tojson }}, borderColor: '#ff2d55', tension: 0.3 },
-                { label: 'Zona Destino', data: {{ resultado.valores_b | tojson }}, borderColor: '#38bdf8', tension: 0.3 }
-            ]
-        },
-        options: { plugins: { legend: { labels: { color: '#fff' } } }, scales: { x: { ticks: { color: '#ccc' } }, y: { ticks: { color: '#ccc' } } } }
+        const map = L.map('map').setView([(latA + latB)/2, (lonA + lonB)/2], 4);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+
+        L.circleMarker([latA, lonA], {color: '#ff2d55', fillColor: '#ff2d55', fillOpacity: 0.8, radius: 10}).addTo(map).bindPopup("ORIGEN (Riesgo)");
+        L.circleMarker([latB, lonB], {color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.8, radius: 10}).addTo(map).bindPopup("DESTINO (Refugio)");
+        L.polyline([[latA, lonA], [latB, lonB]], {color: '#38bdf8', weight: 3, dashArray: '6,6'}).addTo(map);
+        setTimeout(function(){ map.invalidateSize(); }, 300);
+
+        const ctx = document.getElementById('trendChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: {{ resultado.fechas_hist | tojson }},
+                datasets: [
+                    { label: 'Zona Origen', data: {{ resultado.valores_a | tojson }}, borderColor: '#ff2d55', backgroundColor: 'rgba(255,45,85,0.2)', tension: 0.3 },
+                    { label: 'Zona Destino', data: {{ resultado.valores_b | tojson }}, borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.2)', tension: 0.3 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#fff' } } },
+                scales: { x: { ticks: { color: '#ccc' } }, y: { ticks: { color: '#ccc' } } }
+            }
+        });
     });
 </script>
 {% endif %}

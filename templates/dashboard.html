@@ -67,12 +67,12 @@
             <div class="col-md-4"><div class="card card-glass p-2 text-center"><small>Proyección Umbral Crítico</small><h5 class="text-danger">{{ resultado.crisis_a }}</h5></div></div>
         </div>
         <div class="card card-glass p-3 mb-3">
-            <h6>🌐 Mapa de Riesgo y Refugio Hídrico ({{ resultado.fuente }})</h6>
-            <div id="map" style="height: 280px; width: 100%; border-radius: 8px; z-index: 1;"></div>
+            <h6>🌐 Mapa Geoespacial de Riesgo y Refugio Hídrico ({{ resultado.fuente }})</h6>
+            <img src="data:image/png;base64,{{ resultado.mapa_b64 }}" class="img-fluid rounded border border-info" alt="Mapa">
         </div>
         <div class="card card-glass p-3">
             <h6>📈 Comparativa Satelital (Últimos 36 meses)</h6>
-            <div style="height: 220px;"><canvas id="trendChart"></canvas></div>
+            <img src="data:image/png;base64,{{ resultado.grafico_b64 }}" class="img-fluid rounded border border-info" alt="Gráfico">
         </div>
         {% else %}
         <div class="card card-glass p-5 text-center">
@@ -125,50 +125,4 @@
         </table>
     </div>
 </div>
-
-{% if resultado %}
-<script src="https://cloudflare.com"></script>
-<script src="https://cloudflare.com"></script>
-<script>
-    window.addEventListener("load", function() {
-        const latA = parseFloat("{{ resultado.coords.lat_a }}");
-        const lonA = parseFloat("{{ resultado.coords.lon_a }}");
-        const latB = parseFloat("{{ resultado.coords.lat_b }}");
-        const lonB = parseFloat("{{ resultado.coords.lon_b }}");
-
-        if (typeof L !== "undefined") {
-            const map = L.map('map').setView([(latA + latB)/2, (lonA + lonB)/2], 4);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap'
-            }).addTo(map);
-
-            L.circleMarker([latA, lonA], {color: '#ff2d55', fillColor: '#ff2d55', fillOpacity: 0.9, radius: 10}).addTo(map).bindPopup("ORIGEN (Riesgo)");
-            L.circleMarker([latB, lonB], {color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.9, radius: 10}).addTo(map).bindPopup("DESTINO (Refugio)");
-            L.polyline([[latA, lonA], [latB, lonB]], {color: '#38bdf8', weight: 3, dashArray: '6,6'}).addTo(map);
-            setTimeout(function(){ map.invalidateSize(); }, 400);
-        }
-
-        if (typeof Chart !== "undefined") {
-            const ctx = document.getElementById('trendChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: {{ resultado.fechas_hist | tojson }},
-                    datasets: [
-                        { label: 'Zona Origen', data: {{ resultado.valores_a | tojson }}, borderColor: '#ff2d55', backgroundColor: 'rgba(255,45,85,0.2)', tension: 0.3 },
-                        { label: 'Zona Destino', data: {{ resultado.valores_b | tojson }}, borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.2)', tension: 0.3 }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { labels: { color: '#fff' } } },
-                    scales: { x: { ticks: { color: '#ccc' } }, y: { ticks: { color: '#ccc' } } }
-                }
-            });
-        }
-    });
-</script>
-{% endif %}
 {% endblock %}
-

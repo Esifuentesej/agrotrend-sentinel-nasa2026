@@ -6,3 +6,4 @@ requests
 pymannkendall
 gunicorn
 pytest
+matplotlib

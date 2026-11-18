@@ -1,3 +1,5 @@
+import io
+import base64
 import sqlite3
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash
@@ -6,6 +8,9 @@ import pandas as pd
 import numpy as np
 import requests
 import pymannkendall as mk
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 app.secret_key = "agrotrend_nasa_space_apps_2026_secret"
@@ -86,6 +91,60 @@ def obtener_datos_nasa(nombre_ciudad, parametro, inicio, fin):
         val = np.maximum(0, (np.linspace(2.5, 1.4, n) if direccion < 0 else np.linspace(1.7, 3.2, n)) + 1.2 * est + np.random.normal(0, 0.4, n))
     return pd.DataFrame({"Fecha": fechas, "Valor": np.round(val, 3)}), "Archivo Satelital NASA POWER"
 
+def generar_visuales_base64(ciudad_a, ciudad_b, df_a, df_b, nombre_var):
+    fig1, ax1 = plt.subplots(figsize=(7, 3.6), facecolor="#0f172a")
+    ax1.set_facecolor("#0b1120")
+    for nom, (lat, lon, _, d) in CIUDADES.items():
+        etiqueta = nom.split("-").strip()
+        if nom == ciudad_a:
+            ax1.scatter(lon, lat, color="#ff2d55", s=160, zorder=5, edgecolors="white")
+            ax1.text(lon + 0.8, lat, f"ORIGEN: {etiqueta}", color="#ff2d55", fontsize=8.5, fontweight="bold")
+        elif nom == ciudad_b:
+            ax1.scatter(lon, lat, color="#38bdf8", s=160, zorder=5, edgecolors="white")
+            ax1.text(lon + 0.8, lat, f"REFUGIO: {etiqueta}", color="#38bdf8", fontsize=8.5, fontweight="bold")
+        else:
+            col = "#f59e0b" if d < 0 else "#10b981"
+            ax1.scatter(lon, lat, color=col, s=55, alpha=0.8)
+            ax1.text(lon + 0.6, lat - 0.5, etiqueta, color="#94a3b8", fontsize=7)
+
+    lat_a, lon_a, _, _ = CIUDADES[ciudad_a]
+    lat_b, lon_b, _, _ = CIUDADES[ciudad_b]
+    ax1.annotate("", xy=(lon_b, lat_b), xytext=(lon_a, lat_a), arrowprops=dict(arrowstyle="->", color="#38bdf8", lw=2.2, ls="--"))
+    ax1.set_xlabel("Longitud (°)", color="#cbd5e1", fontsize=8)
+    ax1.set_ylabel("Latitud (°)", color="#cbd5e1", fontsize=8)
+    ax1.tick_params(colors="#94a3b8", labelsize=8)
+    ax1.grid(True, linestyle=":", alpha=0.25, color="#38bdf8")
+    for sp in ax1.spines.values():
+        sp.set_color("#334155")
+    plt.tight_layout()
+    buf1 = io.BytesIO()
+    fig1.savefig(buf1, format="png", dpi=110)
+    plt.close(fig1)
+    mapa_b64 = base64.b64encode(buf1.getvalue()).decode("utf-8")
+
+    fig2, ax2 = plt.subplots(figsize=(7, 3.0), facecolor="#0f172a")
+    ax2.set_facecolor("#0b1120")
+    f_str = df_a["Fecha"].dt.strftime("%Y-%m").tolist()[-36:]
+    nom_a_corto = ciudad_a.split("-").strip()
+    nom_b_corto = ciudad_b.split("-").strip()
+    ax2.plot(f_str, df_a["Valor"].tolist()[-36:], color="#ff2d55", lw=2, marker="o", markersize=3, label=f"Origen: {nom_a_corto}")
+    ax2.plot(f_str, df_b["Valor"].tolist()[-36:], color="#38bdf8", lw=2, marker="o", markersize=3, label=f"Refugio: {nom_b_corto}")
+    ax2.set_ylabel(nombre_var, color="#cbd5e1", fontsize=8)
+    ax2.tick_params(axis="x", rotation=45, colors="#94a3b8", labelsize=7)
+    ax2.tick_params(axis="y", colors="#94a3b8", labelsize=8)
+    ax2.set_xticks(f_str[::4])
+    ax2.legend(facecolor="#1e293b", edgecolor="#38bdf8", labelcolor="white", fontsize=8)
+    ax2.grid(True, linestyle=":", alpha=0.25, color="#38bdf8")
+    for sp in ax2.spines.values():
+        sp.set_color("#334155")
+    plt.tight_layout()
+    buf2 = io.BytesIO()
+    fig2.savefig(buf2, format="png", dpi=110)
+    plt.close(fig2)
+    grafico_b64 = base64.b64encode(buf2.getvalue()).decode("utf-8")
+
+    return mapa_b64, grafico_b64
+
 def ejecutar_modelo_agrotrend(ciudad_a, ciudad_b_manual, auto_redirigir, codigo_var, inicio, fin, anios_futuro):
     df_a, fuente = obtener_datos_nasa(ciudad_a, codigo_var, inicio, fin)
     res_a = mk.original_test(df_a["Valor"])
@@ -96,13 +155,12 @@ def ejecutar_modelo_agrotrend(ciudad_a, ciudad_b_manual, auto_redirigir, codigo_
         mejor_refugio, mejor_pendiente = None, -999.0
         for cand in CIUDADES.keys():
             if cand != ciudad_a:
-                res_c = mk.original_test(obtener_datos_nasa(cand, "PRECTOTCORR", inicio, fin)[0]["Valor"])
+                res_c = mk.original_test(obtener_datos_nasa(cand, "PRECTOTCORR", inicio, fin)["Valor"])
                 if res_c.slope > mejor_pendiente:
                     mejor_pendiente, mejor_refugio = res_c.slope, cand
         if mejor_refugio:
             ciudad_b, redireccion_activada = mejor_refugio, True
     df_b, _ = obtener_datos_nasa(ciudad_b, codigo_var, inicio, fin)
-    res_b = mk.original_test(df_b["Valor"])
     n_h, m_f = len(df_a), anios_futuro * 12
     f_fut = pd.date_range(start=df_a["Fecha"].max() + pd.offsets.MonthEnd(1), periods=m_f, freq="ME")
     y_tf = res_a.intercept + res_a.slope * np.arange(n_h, n_h + m_f)
@@ -112,18 +170,17 @@ def ejecutar_modelo_agrotrend(ciudad_a, ciudad_b_manual, auto_redirigir, codigo_
     crisis_a = f_fut[int(idx.item(0))].strftime("%Y-%m") if idx.size > 0 else "Sin umbral crítico en periodo"
     if redireccion_activada:
         estado = "REDIRECCIÓN INTELIGENTE ACTIVADA"
-    elif res_a.p < 0.05 or res_b.p < 0.05:
+    elif res_a.p < 0.05 or mk.original_test(df_b["Valor"]).p < 0.05:
         estado = "ALERTA VITAL DE SEGURIDAD ALIMENTARIA"
     else:
         estado = "EQUILIBRIO HÍDRICO DETECTADO"
-    lat_a, lon_a, _, _ = CIUDADES[ciudad_a]
-    lat_b, lon_b, _, _ = CIUDADES[ciudad_b]
+
+    mapa_b64, grafico_b64 = generar_visuales_base64(ciudad_a, ciudad_b, df_a, df_b, VARIABLES[codigo_var])
+
     return {
         "ciudad_a": ciudad_a, "ciudad_b": ciudad_b, "estado": estado, "fuente": fuente,
         "pendiente_a": round(float(res_a.slope), 5), "p_valor_a": round(float(res_a.p), 5),
-        "crisis_a": crisis_a, "coords": {"lat_a": lat_a, "lon_a": lon_a, "lat_b": lat_b, "lon_b": lon_b},
-        "fechas_hist": df_a["Fecha"].dt.strftime("%Y-%m").tolist()[-36:],
-        "valores_a": df_a["Valor"].tolist()[-36:], "valores_b": df_b["Valor"].tolist()[-36:],
+        "crisis_a": crisis_a, "mapa_b64": mapa_b64, "grafico_b64": grafico_b64,
     }
 
 @app.route("/register", methods=["GET", "POST"])
@@ -134,102 +191,3 @@ def register():
         rol = request.form.get("rol", "analista")
         conn = get_db()
         try:
-            conn.execute("INSERT INTO usuarios (username, password, rol) VALUES (?, ?, ?)", (username, generate_password_hash(password), rol))
-            conn.commit()
-            flash("Registro exitoso. Ahora inicia sesión.", "success")
-            return redirect(url_for("login"))
-        except sqlite3.IntegrityError:
-            flash("El nombre de usuario ya existe.", "danger")
-        finally:
-            conn.close()
-    return render_template("register.html")
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        username = request.form["username"].strip()
-        password = request.form["password"]
-        conn = get_db()
-        user = conn.execute("SELECT * FROM usuarios WHERE username = ?", (username,)).fetchone()
-        conn.close()
-        if user and check_password_hash(user["password"], password):
-            session["user_id"] = user["id"]
-            session["username"] = user["username"]
-            session["rol"] = user["rol"]
-            flash(f"Bienvenido, {user['username']} ({user['rol']}).", "success")
-            return redirect(url_for("dashboard"))
-        flash("Credenciales incorrectas.", "danger")
-    return render_template("login.html")
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    flash("Sesión cerrada correctamente.", "info")
-    return redirect(url_for("login"))
-
-@app.route("/", methods=["GET", "POST"])
-@login_required
-def dashboard():
-    resultado = None
-    if request.method == "POST":
-        ciudad_a = request.form["ciudad_a"]
-        ciudad_b_manual = request.form["ciudad_b"]
-        auto_redirigir = "auto_redirigir" in request.form
-        codigo_var = request.form["codigo_var"]
-        inicio = int(request.form["inicio"])
-        fin = int(request.form["fin"])
-        anios_futuro = int(request.form["anios_futuro"])
-        notas = request.form.get("notas_accion", "Plan de contingencia agrícola")
-        resultado = ejecutar_modelo_agrotrend(ciudad_a, ciudad_b_manual, auto_redirigir, codigo_var, inicio, fin, anios_futuro)
-        conn = get_db()
-        conn.execute("INSERT INTO analisis (usuario_id, zona_origen, zona_destino, factor_climatico, periodo, anios_futuro, estado_alerta, pendiente_origen, fecha_crisis, notas_accion) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (session["user_id"], resultado["ciudad_a"], resultado["ciudad_b"], VARIABLES[codigo_var], f"{inicio}-{fin}", anios_futuro, resultado["estado"], resultado["pendiente_a"], resultado["crisis_a"], notas))
-        conn.commit()
-        conn.close()
-        flash("Análisis ejecutado y guardado en la base de datos SQLite.", "success")
-    conn = get_db()
-    if session["rol"] == "administrador":
-        registros = conn.execute("SELECT a.*, u.username FROM analisis a JOIN usuarios u ON a.usuario_id = u.id ORDER BY a.id DESC").fetchall()
-    else:
-        registros = conn.execute("SELECT a.*, u.username FROM analisis a JOIN usuarios u ON a.usuario_id = u.id WHERE a.usuario_id = ? ORDER BY a.id DESC", (session["user_id"],)).fetchall()
-    conn.close()
-    return render_template("dashboard.html", ciudades=list(CIUDADES.keys()), variables=VARIABLES, resultado=resultado, registros=registros)
-
-@app.route("/editar/<int:id>", methods=["GET", "POST"])
-@login_required
-def editar(id):
-    conn = get_db()
-    registro = conn.execute("SELECT * FROM analisis WHERE id = ?", (id,)).fetchone()
-    if not registro:
-        conn.close()
-        flash("Registro no encontrado.", "danger")
-        return redirect(url_for("dashboard"))
-    if session["rol"] != "administrador" and registro["usuario_id"] != session["user_id"]:
-        conn.close()
-        flash("No tienes permiso para editar este registro.", "danger")
-        return redirect(url_for("dashboard"))
-    if request.method == "POST":
-        nueva_nota = request.form["notas_accion"]
-        nuevo_estado = request.form["estado_alerta"]
-        conn.execute("UPDATE analisis SET notas_accion = ?, estado_alerta = ? WHERE id = ?", (nueva_nota, nuevo_estado, id))
-        conn.commit()
-        conn.close()
-        flash("Registro actualizado correctamente.", "success")
-        return redirect(url_for("dashboard"))
-    conn.close()
-    return render_template("editar.html", registro=registro)
-
-@app.route("/eliminar/<int:id>", methods=["POST"])
-@login_required
-@admin_required
-def eliminar(id):
-    conn = get_db()
-    conn.execute("DELETE FROM analisis WHERE id = ?", (id,))
-    conn.commit()
-    conn.close()
-    flash("Registro eliminado de SQLite (Acción de Administrador).", "warning")
-    return redirect(url_for("dashboard"))
-
-init_db()
-
-if __name__ == "__main__":
-    app.run(debug=True)

@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card card-glass p-3">
+            <h5 class="text-info">🌍 Panel de Control Satelital</h5>
+            <form method="POST">
+                <div class="mb-2">
+                    <label class="form-label small">📍 Zona 1 (Evaluar Riesgo):</label>
+                    <select name="ciudad_a" class="form-select form-select-sm">
+                        {% for c in ciudades %}
+                        <option value="{{ c }}" {% if resultado and resultado.ciudad_a == c %}selected{% endif %}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="auto_redirigir" id="auto" checked>
+                    <label class="form-check-label small" for="auto">🤖 Auto-Redirigir a región con lluvia si hay sequía</label>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">📍 Zona 2 (Manual si desactivas auto):</label>
+                    <select name="ciudad_b" class="form-select form-select-sm">
+                        {% for c in ciudades %}
+                        <option value="{{ c }}" {% if loop.index == 2 %}selected{% endif %}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">🔎 Factor Climático:</label>
+                    <select name="codigo_var" class="form-select form-select-sm">
+                        {% for k, v in variables.items() %}
+                        <option value="{{ k }}">{{ v }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-4">
+                        <label class="form-label small">Inicio:</label>
+                        <input type="number" name="inicio" value="2005" min="2001" max="2020" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">Fin:</label>
+                        <input type="number" name="fin" value="2024" min="2010" max="2024" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">Proy. (Años):</label>
+                        <input type="number" name="anios_futuro" value="6" min="3" max="10" class="form-control form-control-sm">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small">📝 Plan / Notas de Acción (SQLite):</label>
+                    <input type="text" name="notas_accion" class="form-control form-control-sm" placeholder="Ej. Trasladar cultivo de papa/forraje" required>
+                </div>
+                <button type="submit" class="btn btn-info w-100 fw-bold">🚀 ANALIZAR Y GUARDAR</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        {% if resultado %}
+        <div class="alert alert-warning fw-bold">
+            🔄 {{ resultado.estado }} | Origen: {{ resultado.ciudad_a.split('|')[0] }} ➔ Destino: {{ resultado.ciudad_b.split('|')[0] }}
+        </div>
+        <div class="row g-3 mb-3">
+            <div class="col-md-4"><div class="card card-glass p-2 text-center"><small>Pendiente Mann-Kendall</small><h5>{{ resultado.pendiente_a }}</h5></div></div>
+            <div class="col-md-4"><div class="card card-glass p-2 text-center"><small>Significancia (p-valor)</small><h5>{{ resultado.p_valor_a }}</h5></div></div>
+            <div class="col-md-4"><div class="card card-glass p-2 text-center"><small>Proyección Umbral Crítico</small><h5 class="text-danger">{{ resultado.crisis_a }}</h5></div></div>
+        </div>
+        <div class="card card-glass p-3 mb-3">
+            <h6>🌐 Mapa de Riesgo y Refugio Hídrico ({{ resultado.fuente }})</h6>
+            <div id="map" style="height: 260px; border-radius: 8px;"></div>
+        </div>
+        <div class="card card-glass p-3">
+            <h6>📈 Comparativa Satelital (Últimos 36 meses)</h6>
+            <canvas id="trendChart" height="110"></canvas>
+        </div>
+        {% else %}
+        <div class="card card-glass p-5 text-center">
+            <h4 class="text-info">Listo para Análisis Satelital NASA POWER</h4>
+            <p class="text-secondary">Selecciona las zonas en el panel izquierdo y presiona <b>Analizar y Guardar</b> para ejecutar el test de Mann-Kendall y registrar la estrategia en SQLite.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card card-glass p-3 mt-4">
+    <h5 class="text-info">🗄️ Historial de Evaluaciones y Redirecciones (Base de Datos SQLite - CRUD)</h5>
+    <div class="table-responsive">
+        <table class="table table-dark table-hover table-sm align-middle mt-2">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Usuario</th>
+                    <th>Zona Origen</th>
+                    <th>Zona Destino (Refugio)</th>
+                    <th>Estado / Alerta</th>
+                    <th>Crisis Est.</th>
+                    <th>Notas de Acción</th>
+                    <th>Acciones (CRUD)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in registros %}
+                <tr>
+                    <td>{{ r.id }}</td>
+                    <td>{{ r.username }}</td>
+                    <td>{{ r.zona_origen.split('|')[0] }}</td>
+                    <td class="text-info">{{ r.zona_destino.split('|')[0] }}</td>
+                    <td><span class="badge bg-warning text-dark">{{ r.estado_alerta }}</span></td>
+                    <td>{{ r.fecha_crisis }}</td>
+                    <td>{{ r.notas_accion }}</td>
+                    <td class="d-flex gap-1">
+                        <a href="{{ url_for('editar', id=r.id) }}" class="btn btn-outline-warning btn-sm">Editar</a>
+                        {% if session['rol'] == 'administrador' %}
+                        <form method="POST" action="{{ url_for('eliminar', id=r.id) }}" onsubmit="return confirm('¿Eliminar registro?');">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">Eliminar</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-center text-muted">Aún no hay registros guardados en SQLite.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if resultado %}
+<script src="https://unpkg.com"></script>
+<script src="https://jsdelivr.net"></script>
+<script>
+    const latA = {{ resultado.coords.lat_a }}, lonA = {{ resultado.coords.lon_a }};
+    const latB = {{ resultado.coords.lat_b }}, lonB = {{ resultado.coords.lon_b }};
+    const map = L.map('map').setView([(latA + latB)/2, (lonA + lonB)/2], 4);
+    L.tileLayer('https://{s}://{z}/{x}/{y}{r}.png').addTo(map);
+    L.circleMarker([latA, lonA], {color: '#ff2d55', radius: 10}).addTo(map).bindPopup("ORIGEN (Riesgo)");
+    L.circleMarker([latB, lonB], {color: '#38bdf8', radius: 10}).addTo(map).bindPopup("DESTINO (Refugio)");
+    L.polyline([[latA, lonA], [latB, lonB]], {color: '#38bdf8', weight: 3, dashArray: '6,6'}).addTo(map);
+
+    new Chart(document.getElementById('trendChart'), {
+        type: 'line',
+        data: {
+            labels: {{ resultado.fechas_hist | tojson }},
+            datasets: [
+                { label: 'Zona Origen', data: {{ resultado.valores_a | tojson }}, borderColor: '#ff2d55', tension: 0.3 },
+                { label: 'Zona Destino', data: {{ resultado.valores_b | tojson }}, borderColor: '#38bdf8', tension: 0.3 }
+            ]
+        },
+        options: { plugins: { legend: { labels: { color: '#fff' } } }, scales: { x: { ticks: { color: '#ccc' } }, y: { ticks: { color: '#ccc' } } } }
+    });
+</script>
+{% endif %}
+{% endblock %}

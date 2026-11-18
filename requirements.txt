@@ -1,0 +1,8 @@
+﻿flask
+werkzeug
+pandas
+numpy
+requests
+pymannkendall
+gunicorn
+pytest
